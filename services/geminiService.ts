@@ -2,7 +2,7 @@
 import { GoogleGenAI, Part } from "@google/genai";
 import { OutputMode } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const API_KEY = import.meta.env.VITE_API_KEY;
 
 // Function to convert a File object to a Part object
 async function fileToGenerativePart(file: File): Promise<Part> {
