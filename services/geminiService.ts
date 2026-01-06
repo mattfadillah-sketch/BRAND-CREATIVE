@@ -1,96 +1,92 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+// Kita tidak perlu import Part atau OutputMode dari library yang lama.
+// Kita definisikan OutputMode sederhana di sini jika belum ada di file lain.
+// Jika OutputMode sudah didefinisikan di file types.ts, baris ini bisa dihapus.
+export enum OutputMode {
+  VisualPrompt = 'Visual Prompt (Midjourney/Imagen)',
+  VideoScript = 'Video Script (Reels/TikTok)',
+  ContentPlanner = 'Content Planner (7 Days)'
+}
 
-import { GoogleGenAI, Part } from "@google/genai";
-import { OutputMode } from "../types";
-
+// 1. INI CARA AMBIL KUNCI YANG BENAR
 const API_KEY = import.meta.env.VITE_API_KEY;
 
-// Function to convert a File object to a Part object
-async function fileToGenerativePart(file: File): Promise<Part> {
-  const base64EncodedDataPromise = new Promise<string>((resolve) => {
+if (!API_KEY) {
+  console.error("MATI KUTU: VITE_API_KEY belum diisi di Vercel!");
+}
+
+// 2. INISIALISASI RESMI (Kita panggil dia 'genAI')
+const genAI = new GoogleGenerativeAI(API_KEY);
+
+// Helper function untuk memproses file gambar
+async function fileToGenerativePart(file: File) {
+  const base64EncodedDataPromise = new Promise((resolve) => {
     const reader = new FileReader();
-    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+    reader.onloadend = () => resolve(reader.result.split(',')[1]);
     reader.readAsDataURL(file);
   });
   return {
-    inlineData: {
-      data: await base64EncodedDataPromise,
-      mimeType: file.type,
-    },
+    inlineData: { data: await base64EncodedDataPromise, mimeType: file.type },
   };
 }
 
+// 3. FUNGSI UTAMA (Nama fungsi disamakan dengan kodingan lama Anda)
 export async function generateContentFromImages(
   brandDnaFile: File,
   moodboardFile: File,
   objective: string,
   mode: OutputMode
 ): Promise<string> {
-  
+
+  // Pilih model Gemini yang stabil dan bisa melihat gambar
+  // Kita pakai 'gemini-1.5-flash' yang cepat dan murah.
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+  // Siapkan gambar
   const brandDnaPart = await fileToGenerativePart(brandDnaFile);
   const moodboardPart = await fileToGenerativePart(moodboardFile);
 
+  // Siapkan instruksi prompt (Saya sederhanakan sedikit agar lebih robust)
   const visualPromptFormatInstruction = `
-   FORMAT OUTPUT KHUSUS UNTUK MODE 'Visual Prompt (Midjourney/Imagen)':
-   - **Konsep (Bahasa Indonesia):** Jelaskan strategi dan ide visual di baliknya. Gunakan Bahasa Indonesia yang 100% sesuai dengan Tone of Voice dari Gambar A.
-   - **Prompt (Bahasa Inggris):** Berikan prompt teknis dalam Bahasa Inggris yang siap di-copy-paste untuk AI Image Generator (seperti Midjourney/DALL-E).
-  `;
-
+    FORMAT OUTPUT KHUSUS UNTUK MODE 'Visual Prompt (Midjourney/Imagen)':
+    - **Konsep (Bahasa Indonesia):** Jelaskan strategi visualnya. Gunakan Tone of Voice dari Gambar A.
+    - **Prompt (Bahasa Inggris):** Berikan prompt teknis siap pakai untuk AI Image Generator.
+   `;
   const defaultFormatInstruction = `
-   FORMAT OUTPUT:
-   Buat output dalam format Markdown yang rapi dan 100% dalam Bahasa Indonesia, sepenuhnya meniru gaya bahasa dari Gambar A.
-  `;
+    FORMAT OUTPUT:
+    Buat output format Markdown rapi, 100% Bahasa Indonesia, meniru gaya bahasa Gambar A.
+   `;
 
-  const prompt = `
-    PERAN:
-    Anda adalah 'Master Art Forger' (Ahli Pemalsu Seni) dan Direktur Kreatif Forensik. Tugas Anda adalah meniru gaya visual dan verbal secara obsesif hingga ke detail terkecil.
-
+  const promptText = `
+    PERAN: Master Art Forger & Direktur Kreatif Forensik. Tiru gaya visual dan verbal Gambar A secara obsesif.
     INPUT:
-    - IMAGE 1 (REFERENCE 'THE DNA'): Ini adalah sumber kebenaran mutlak untuk gaya, tekstur, teknik rendering, dan Tone of Voice.
-    - IMAGE 2 (MOODBOARD 'THE SUBJECT'): Ini hanya referensi untuk objek/subjek baru yang akan dibuat.
+    - IMAGE 1 (REFERENCE 'THE DNA'): Sumber kebenaran gaya dan tone of voice.
+    - IMAGE 2 (MOODBOARD 'THE SUBJECT'): Referensi objek baru.
     - CONTEXT: "${objective}"
-
-    PROSES BERPIKIR WAJIB (JANGAN LANGSUNG GENERATE):
-    Sebelum membuat output, lakukan 'DEKONSTRUKSI FORENSIK' pada IMAGE 1 di dalam pikiran Anda:
-    1.  **Analisis Visual (Gaya):**
-        - **Medium & Teknik:** Apakah ini foto analog, ilustrasi digital vektor, lukisan cat minyak, atau kolase? Bagaimana goresan kuas atau garisnya (bersih/kasar)?
-        - **Tekstur & Imperfeksi:** Apakah ada film grain, tekstur kertas, efek cetak sablon, atau noise digital tertentu?
-        - **Pencahayaan & Warna:** Bagaimana *color grading*-nya? Apakah warnanya pudar (muted), neon, atau saturasi tinggi? Dari mana arah cahayanya?
-        - **Komposisi Mikroskopis:** Detail kecil apa yang membuat gambar ini unik?
-    2.  **Analisis Verbal (Suara):**
-        - Jika ada teks di IMAGE 1, analisis gaya bahasanya (formal, slang 'lo/gue', puitis, rebel?). Ini adalah Tone of Voice yang wajib ditiru untuk semua teks naratif.
-
-    TUGAS UTAMA:
-    Buat output mode '${mode}' dengan mengambil SUBJEK dari IMAGE 2, tetapi MENDERENDERING-NYA ULANG menggunakan 100% teknik visual DAN verbal yang ditemukan di IMAGE 1.
-
-    ATURAN KETAT:
-    1.  **MIMIKRI VISUAL:** JANGAN gunakan gaya AI generik (smooth 3D, glossy) jika referensi bergaya kasar/2D. Jika IMAGE 1 adalah ilustrasi tangan yang tidak rapi, hasil output HARUS terlihat tidak rapi juga. Presisi gaya lebih penting daripada keindahan gambar.
-    2.  **MIMIKRI VERBAL:** Jika IMAGE 1 menggunakan bahasa gaul/kasar, MAKA SEMUA TEKS OUTPUT (konsep, naskah) HARUS MENGGUNAKAN BAHASA ITU JUGA. Jangan jadi sopan atau formal.
-    3.  **HINDARI KATA AI:** Jangan pernah menggunakan frasa generik seperti 'Tingkatkan gaya Anda', 'Solusi terbaik'.
-
+    TUGAS:
+    Buat output mode '${mode}'. Ambil SUBJEK dari IMAGE 2, render ulang dengan 100% gaya visual & verbal IMAGE 1.
+    ATURAN:
+    1. MIMIKRI VISUAL: Tiru tekstur, lighting, dan ketidaksempurnaan Gambar A. Jangan jadi generik AI.
+    2. MIMIKRI VERBAL: Tiru gaya bahasa Gambar A (formal/gaul/kasar) di semua output teks.
     ${mode === OutputMode.VisualPrompt ? visualPromptFormatInstruction : defaultFormatInstruction}
   `;
 
-  const contents = {
-    parts: [
-      { text: prompt },
-      brandDnaPart, // Gambar A (Reference)
-      moodboardPart, // Gambar B (Moodboard)
-    ],
-  };
-
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: contents
-    });
+    console.log("Mengirim ke Google Gemini...");
+    // Kirim prompt teks dan kedua gambar
+    const result = await model.generateContent([
+        promptText,
+        brandDnaPart,
+        moodboardPart
+    ]);
 
-    if (response.text) {
-        return response.text;
-    } else {
-        throw new Error("API returned no text in the response.");
-    }
+    console.log("Jawaban diterima!");
+    const response = await result.response;
+    const text = response.text();
+    return text;
+
   } catch (error) {
-    console.error("Error calling Gemini API:", error);
-    throw new Error("Failed to generate content from Gemini API.");
+    console.error("JIAH ERROR SAAT NGOBROL SAMA GEMINI:", error);
+    throw new Error("Gagal mendapatkan jawaban dari Gemini API. Cek konsol untuk detail.");
   }
 }
